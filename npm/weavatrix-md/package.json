@@ -7,10 +7,10 @@
   "homepage": "https://weavatrix.com",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/sergii-ziborov/weavatrix-md.git"
+    "url": "git+https://github.com/Weavatrix/weavatrix-md.git"
   },
   "bugs": {
-    "url": "https://github.com/sergii-ziborov/weavatrix-md/issues"
+    "url": "https://github.com/Weavatrix/weavatrix-md/issues"
   },
   "type": "module",
   "engines": {
