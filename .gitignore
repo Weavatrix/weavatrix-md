@@ -1,0 +1,5 @@
+/target
+/npm/dist
+.DS_Store
+*.pdb
+.WEAVATRIX.md.tmp
