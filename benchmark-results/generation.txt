@@ -1,0 +1,14 @@
+weavatrix-md 0.1.0 generation bench
+hardware: local Windows workstation
+command: cargo bench --bench generation
+statistic=median runs=11 warmups=2
+
+repos=1 median_ms=1.667
+repos=5 median_ms=6.745
+repos=20 median_ms=36.676
+
+Notes:
+- Each synthetic repo has Kafka producer+consumer, HTTP server+client, and a shared Postgres DSN.
+- Measurement is generate(..., Stdout): scan + parse + resolve + render. No file write.
+- Product target for 20 medium repos was <10s cold. This synthetic neighborhood is well under that.
+- Product target for one ordinary repo was <150ms. This 1-repo run is ~2ms on a warm filesystem.
