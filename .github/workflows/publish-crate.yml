@@ -1,0 +1,63 @@
+name: Publish crate
+
+on:
+  workflow_dispatch:
+    inputs:
+      authentication:
+        description: Use bootstrap-token for the first crates.io release
+        type: choice
+        required: true
+        default: bootstrap-token
+        options:
+          - bootstrap-token
+          - trusted-publishing
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-crate-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish to crates.io
+    runs-on: ubuntu-latest
+    environment: crates-io
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Install stable Rust
+        run: rustup toolchain install stable --profile minimal --component clippy,rustfmt
+      - name: Check formatting
+        run: cargo +stable fmt --all -- --check
+      - name: Run Clippy
+        run: cargo +stable clippy --all-targets -- -D warnings
+      - name: Run tests
+        run: cargo +stable test --locked
+      - name: Verify package
+        run: cargo +stable publish --locked --dry-run
+      - name: Authenticate with crates.io trusted publishing
+        if: inputs.authentication == 'trusted-publishing'
+        id: crates-io
+        uses: rust-lang/crates-io-auth-action@v1
+      - name: Publish
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ inputs.authentication == 'trusted-publishing' && steps.crates-io.outputs.token || secrets.CARGO_REGISTRY_TOKEN }}
+        run: cargo +stable publish --locked --no-verify
+
+      - name: Verify crates.io artifact
+        run: |
+          VERSION="$(cargo metadata --locked --no-deps --format-version 1 | jq -r '.packages[0].version')"
+          for attempt in $(seq 1 24); do
+            if cargo info --color never --registry crates-io "weavatrix-md@$VERSION" >/dev/null 2>&1; then
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "weavatrix-md@$VERSION did not become visible on crates.io" >&2
+          exit 1
