@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.2 — 2026-09-06
+
+- API: `*_SERVICE_URL` / `EDGE_*_SERVICE_URL` bindings map to the peer service
+  even when the default URL is `localhost` (controller → analytics).
+- Database: shared logical DB names on localhost (`inventory`, …) form a
+  neighborhood; README.md is eligible for `MONGO_HOST=` defaults; Go
+  `redis_ipport` / `mongodb_uri` flags are recognized.
+- Kafka: topic constants like `PoTrafficTopic = "aggr-po-traffic"` count as
+  consumers in Kafka-marked files.
+
 ## 0.2.1 — 2026-09-06
 
 - Kafka: bind `process.env.X || 'topic'` defaults; treat `sendMessage` /

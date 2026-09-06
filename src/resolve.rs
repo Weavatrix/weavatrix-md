@@ -189,6 +189,20 @@ fn database_edges(inventories: &[RepoInventory]) -> BTreeMap<RepoName, Vec<Datab
                 continue;
             };
             if item.localhost {
+                // Loopback DSNs still prove a shared logical database when the name
+                // is specific (inventory, warroom) — common in microservice splits.
+                if let Some(database) = item.database.as_deref()
+                    && is_specific_database_name(database)
+                {
+                    index
+                        .entry(Key {
+                            engine: item.engine,
+                            host: "_localhost_".to_owned(),
+                            database: Some(database.to_owned()),
+                        })
+                        .or_default()
+                        .insert(inventory.repo.name.clone());
+                }
                 continue;
             }
             index
@@ -241,6 +255,28 @@ fn database_edges(inventories: &[RepoInventory]) -> BTreeMap<RepoName, Vec<Datab
         });
     }
     maps
+}
+
+fn is_specific_database_name(name: &str) -> bool {
+    !matches!(
+        name.to_ascii_lowercase().as_str(),
+        "test"
+            | "tests"
+            | "admin"
+            | "default"
+            | "postgres"
+            | "mysql"
+            | "mongo"
+            | "mongodb"
+            | "redis"
+            | "master"
+            | "temp"
+            | "tmp"
+            | "local"
+            | "public"
+            | "0"
+            | "1"
+    )
 }
 
 fn api_edges(

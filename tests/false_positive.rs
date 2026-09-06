@@ -129,14 +129,14 @@ fn table_name_similarity_is_not_a_database_edge() {
 }
 
 #[test]
-fn localhost_database_is_not_shared() {
+fn localhost_generic_database_is_not_shared() {
     let space = workspace("localhost");
     repo(
         &space.root,
         "alpha",
         &[(
             ".env.example",
-            "DATABASE_URL=postgres://u:p@localhost:5432/app\n",
+            "DATABASE_URL=postgres://u:p@localhost:5432/postgres\n",
         )],
     );
     repo(
@@ -144,7 +144,7 @@ fn localhost_database_is_not_shared() {
         "beta",
         &[(
             ".env.example",
-            "DATABASE_URL=postgres://u:p@localhost:5432/app\n",
+            "DATABASE_URL=postgres://u:p@localhost:5432/postgres\n",
         )],
     );
     let output = generate_folder(&space.root);

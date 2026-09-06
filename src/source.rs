@@ -41,6 +41,7 @@ const EXTENSIONS: &[&str] = &[
     "tf",
     "sql",
     "swift",
+    "md",
 ];
 
 /// Builds a compact inventory for one repository and drops all source.
@@ -128,6 +129,9 @@ fn inspect_file(
 
 fn skip_path(relative: &str) -> bool {
     let path = relative.to_ascii_lowercase();
+    let file_name = path.rsplit('/').next().unwrap_or(path.as_str());
+    // README often documents MONGO_HOST= / SERVICE_URL= defaults with no .env.example.
+    let is_readme = matches!(file_name, "readme" | "readme.md" | "readme.rst" | "readme.txt");
     path.contains("/test/")
         || path.contains("/tests/")
         || path.contains("/__tests__/")
@@ -137,9 +141,9 @@ fn skip_path(relative: &str) -> bool {
         || path.contains(".spec.")
         || path.ends_with("_test.go")
         || path.ends_with("_test.rs")
-        || path.ends_with(".md")
+        || (path.ends_with(".md") && !is_readme)
         || path.ends_with(".mdx")
-        || path.ends_with(".rst")
+        || path.ends_with(".rst") && !is_readme
         || path.ends_with(".html")
         || path.ends_with(".css")
         || path.ends_with(".scss")

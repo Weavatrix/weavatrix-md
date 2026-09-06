@@ -69,6 +69,7 @@ pub(crate) fn detect_database(
         for (_, value) in stream.bindings() {
             consider(inventory, &value);
         }
+        collect_flag_store(inventory, stream);
         let mut index = 0;
         while index < stream.len() {
             if let Some(literal) = stream.string(index) {
@@ -338,10 +339,93 @@ fn is_env_file(relative: &str) -> bool {
         .next()
         .unwrap_or(relative)
         .to_ascii_lowercase();
-    name.contains(".env") || name.ends_with(".properties") || name.ends_with(".example")
+    name.contains(".env")
+        || name.ends_with(".properties")
+        || name.ends_with(".example")
+        || matches!(name.as_str(), "readme" | "readme.md" | "readme.rst" | "readme.txt")
 }
 
 fn is_ignored_secret_env(relative: &str) -> bool {
     let name = relative.rsplit('/').next().unwrap_or(relative);
     name == ".env" || name.ends_with(".env.local") || name.ends_with(".env.secret")
+}
+
+/// Go `flag.String("redis_ipport", "10.0.0.1:6379", …)` / `mongodb_uri` defaults.
+fn collect_flag_store(inventory: &mut RepoInventory, stream: &Stream<'_>) {
+    let mut index = 0;
+    while index + 5 < stream.len() {
+        let Some(receiver) = stream.ident(index) else {
+            index += 1;
+            continue;
+        };
+        if !(receiver.eq_ignore_ascii_case("flag") || receiver.contains("Flag"))
+            || !stream.is_punct(index + 1, ".")
+        {
+            index += 1;
+            continue;
+        }
+        let Some(call) = stream.ident(index + 2) else {
+            index += 1;
+            continue;
+        };
+        if call != "String" && call != "StringVar" {
+            index += 1;
+            continue;
+        }
+        let mut strings = Vec::new();
+        let mut scan = index + 3;
+        while scan < stream.len() && strings.len() < 3 {
+            if let Some(literal) = stream.string(scan) {
+                strings.push(literal);
+            }
+            if stream.is_punct(scan, ")") {
+                break;
+            }
+            scan += 1;
+        }
+        let flag_name = strings.first().map_or("", String::as_str);
+        let value = strings.get(1).map_or("", String::as_str);
+        let help = strings.get(2).map_or("", String::as_str);
+        let name_l = flag_name.to_ascii_lowercase();
+        let help_l = help.to_ascii_lowercase();
+        if name_l.contains("mongo") || help_l.contains("mongo") {
+            if value.contains("://") {
+                consider(inventory, value);
+            } else if !value.is_empty() && !value.starts_with(':') {
+                consider(inventory, &format!("mongodb://{value}"));
+            }
+        } else if name_l.contains("redis") || help_l.contains("redis") {
+            if value.contains("://") {
+                consider(inventory, value);
+            } else if let Some(observation) = parse_redis_addr(value) {
+                inventory.databases.push(observation);
+            }
+        }
+        index += 1;
+    }
+}
+
+fn parse_redis_addr(raw: &str) -> Option<DatabaseObservation> {
+    let trimmed = raw.trim().trim_matches(['"', '\'']);
+    if trimmed.is_empty() || trimmed == ":6379" {
+        return None;
+    }
+    let hostport = trimmed.split(',').next()?.trim();
+    let host = hostport.split(':').next()?.trim();
+    if host.is_empty() || host_is_unresolved_env(host) {
+        return None;
+    }
+    let localhost = normalize::is_localhost(host);
+    let database = hostport
+        .split(':')
+        .nth(1)
+        .map(str::trim)
+        .filter(|port| !port.is_empty())
+        .map(ToOwned::to_owned);
+    Some(DatabaseObservation {
+        engine: DatabaseEngine::Redis,
+        host: Some(host.to_ascii_lowercase()),
+        database,
+        localhost,
+    })
 }

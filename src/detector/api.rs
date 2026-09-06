@@ -111,13 +111,22 @@ pub(crate) fn detect_api(
         let mut index = 0;
         while index < stream.len() {
             if let Some(literal) = stream.string(index) {
-                observe_url(inventory, &literal, bindings);
+                observe_url(inventory, &literal, None);
             }
             index += 1;
         }
-    }
-    for (_, value) in bindings {
-        observe_url(inventory, value, bindings);
+        // `DEFAULT_EDGE_ANALYTICS_SERVICE_URL = 'http://localhost:3310'` — host is
+        // loopback, but the binding name still names the peer service.
+        for (name, value) in bindings {
+            observe_url(inventory, value, Some(name));
+        }
+        for (name, value) in stream.bindings() {
+            observe_url(inventory, &value, Some(&name));
+        }
+    } else {
+        for (name, value) in bindings {
+            observe_url(inventory, value, Some(name));
+        }
     }
 }
 
@@ -130,7 +139,7 @@ fn observe_call(
 ) {
     for raw in strings {
         let value = resolve_binding(bindings, raw).unwrap_or_else(|| raw.clone());
-        observe_url(inventory, &value, bindings);
+        observe_url(inventory, &value, None);
         if let Some(route) = http_route(&value)
             && let Some((direction, method)) = classify_http(name, receiver, &value)
         {
@@ -139,14 +148,14 @@ fn observe_call(
                 protocol: ApiProtocol::Http,
                 method,
                 resource: route,
-                host_hint: url_host(&value),
+                host_hint: effective_host(&value, None),
             });
         }
     }
     if CLIENT_CALLS.contains(&name) {
         for raw in strings {
             let value = resolve_binding(bindings, raw).unwrap_or_else(|| raw.clone());
-            if let Some(host) = url_host(&value) {
+            if let Some(host) = effective_host(&value, None) {
                 inventory.api.push(ApiObservation {
                     direction: ApiDirection::Calls,
                     protocol: ApiProtocol::Http,
@@ -217,16 +226,13 @@ fn http_route(value: &str) -> Option<String> {
     None
 }
 
-fn observe_url(inventory: &mut RepoInventory, raw: &str, _bindings: &[(String, String)]) {
-    let Some(host) = url_host(raw) else {
-        return;
-    };
-    if normalize::is_localhost(&host) {
-        return;
-    }
+fn observe_url(inventory: &mut RepoInventory, raw: &str, binding_name: Option<&str>) {
     if looks_like_database_url(raw) || looks_like_kafka_url(raw) {
         return;
     }
+    let Some(host) = effective_host(raw, binding_name) else {
+        return;
+    };
     inventory.api.push(ApiObservation {
         direction: ApiDirection::Calls,
         protocol: ApiProtocol::Http,
@@ -234,6 +240,42 @@ fn observe_url(inventory: &mut RepoInventory, raw: &str, _bindings: &[(String, S
         resource: http_route(raw).unwrap_or_else(|| "/".to_owned()),
         host_hint: Some(host),
     });
+}
+
+/// Host from URL, or from `*_SERVICE_URL` / `EDGE_*_SERVICE_URL` binding when URL is loopback.
+fn effective_host(raw: &str, binding_name: Option<&str>) -> Option<String> {
+    let host = url_host(raw)?;
+    if !normalize::is_localhost(&host) {
+        return Some(host);
+    }
+    binding_name.and_then(service_alias_from_binding)
+}
+
+/// `DEFAULT_EDGE_ANALYTICS_SERVICE_URL` / `EDGE_ANALYTICS_SERVICE_URL` → `analytics`.
+fn service_alias_from_binding(name: &str) -> Option<String> {
+    let mut stem = name.trim().to_ascii_lowercase();
+    for prefix in ["default_", "fallback_", "cfg_", "config_"] {
+        if let Some(rest) = stem.strip_prefix(prefix) {
+            stem = rest.to_owned();
+        }
+    }
+    let stem = stem
+        .strip_suffix("_service_url")
+        .or_else(|| stem.strip_suffix("_service_uri"))
+        .or_else(|| stem.strip_suffix("_base_url"))
+        .or_else(|| {
+            stem.strip_suffix("_url")
+                .filter(|item| item.contains("service") || item.contains("analytics"))
+        })?;
+    let stem = stem
+        .strip_prefix("edge_")
+        .or_else(|| stem.strip_prefix("eh_"))
+        .unwrap_or(stem);
+    let alias = stem.replace('_', "-");
+    if alias.len() < 2 || normalize::is_localhost(&alias) {
+        return None;
+    }
+    Some(alias)
 }
 
 fn url_host(value: &str) -> Option<String> {

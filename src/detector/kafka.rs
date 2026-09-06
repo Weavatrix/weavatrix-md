@@ -30,6 +30,7 @@ const CONSUMER_CALLS: &[&str] = &[
     "FetchMessage",
     "initConsumerForATopic",
     "initConsumer",
+    "CreateReader",
 ];
 const PRODUCER_RECEIVERS: &[&str] = &["producer", "writer", "template"];
 const CONSUMER_RECEIVERS: &[&str] = &["consumer", "reader", "listener"];
@@ -79,6 +80,7 @@ pub(crate) fn detect_kafka(
     }
     if let Some(stream) = stream {
         collect_flag_assignments(stream, &mut local, inventory, cluster.as_deref());
+        collect_topic_constants(stream, inventory, cluster.clone());
         let mut index = 0;
         while index + 2 < stream.len() {
             if let Some(name) = stream.ident(index)
@@ -214,6 +216,33 @@ fn collect_flag_assignments(
             }
         }
         index += 1;
+    }
+}
+
+/// `const PoTrafficTopic = "aggr-po-traffic"` in a Kafka-marked Go file.
+fn collect_topic_constants(
+    stream: &Stream<'_>,
+    inventory: &mut RepoInventory,
+    cluster: Option<String>,
+) {
+    for (name, topic) in stream.bindings() {
+        if !looks_like_topic(&topic) {
+            continue;
+        }
+        let lower = name.to_ascii_lowercase();
+        if !lower.contains("topic") {
+            continue;
+        }
+        let role = if lower.contains("out")
+            || lower.contains("produce")
+            || lower.contains("publish")
+            || lower.contains("write")
+        {
+            KafkaRole::Producer
+        } else {
+            KafkaRole::Consumer
+        };
+        push(inventory, role, topic, cluster.clone());
     }
 }
 

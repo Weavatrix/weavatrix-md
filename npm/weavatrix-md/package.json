@@ -1,6 +1,6 @@
 {
   "name": "weavatrix-md",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Tiny deterministic cross-repository integration map for coding agents.",
   "author": "Sergii Ziborov <sergii.ziborov@gmail.com>",
   "license": "MIT",

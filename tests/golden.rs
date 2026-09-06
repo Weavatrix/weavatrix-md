@@ -459,6 +459,117 @@ var FlagGetPOURL = flag.String("thr_get_po_url", "http://controller-rest-api:330
 }
 
 #[test]
+fn analytics_service_url_and_shared_mongo_inventory() {
+    let space = workspace("analytics-mongo");
+    repo(
+        &space.root,
+        "controller-rest-api",
+        &[
+            (
+                "services/edgeAnalytics/proxy.js",
+                r#"
+const DEFAULT_EDGE_ANALYTICS_SERVICE_URL = 'http://localhost:3310'
+export const getEdgeAnalyticsServiceUrl = () =>
+  (process.env.EDGE_ANALYTICS_SERVICE_URL || DEFAULT_EDGE_ANALYTICS_SERVICE_URL).replace(/\/+$/, '')
+"#,
+            ),
+            (
+                "README.md",
+                "MONGO_HOST=mongodb://localhost:27017/inventory\n",
+            ),
+        ],
+    );
+    repo(
+        &space.root,
+        "analytics",
+        &[(
+            "src/config/env.js",
+            "export const config = { mongoUri: process.env.MONGO_HOST || 'mongodb://localhost:27017/inventory', port: 3310 }\n",
+        )],
+    );
+    let output = generate_folder(&space.root);
+    assert_eq!(output.code, 0, "{}", output.stderr);
+    let controller = read_md(&space.root.join("controller-rest-api"));
+    let analytics = read_md(&space.root.join("analytics"));
+    assert!(
+        controller.contains("calls → `analytics`"),
+        "controller:\n{controller}"
+    );
+    assert!(
+        analytics.contains("called by ← `controller-rest-api`"),
+        "analytics:\n{analytics}"
+    );
+    assert!(
+        analytics.contains("## Database") && analytics.contains("`inventory`"),
+        "analytics:\n{analytics}"
+    );
+    assert!(
+        analytics.contains("`controller-rest-api`"),
+        "analytics mongo peers:\n{analytics}"
+    );
+}
+
+#[test]
+fn aggr_redis_and_topic_constants() {
+    let space = workspace("aggr-redis");
+    repo(
+        &space.root,
+        "aggr",
+        &[
+            (
+                "engines/redis/redis.go",
+                r#"
+package redis
+import "github.com/namsral/flag"
+var flagRedisIpPort = flag.String("redis_ipport", "10.19.0.235:6379", "Host:Port of Redis")
+"#,
+            ),
+            (
+                "service/service.go",
+                r#"
+package service
+import "edgehawk.com/aggr/engines/kafka"
+const (
+  PoTrafficTopic = "aggr-po-traffic"
+  PoFiltersTopic = "aggr-po-filters"
+)
+func CreateService() { _ = kafka.CreateReader }
+"#,
+            ),
+        ],
+    );
+    repo(
+        &space.root,
+        "thrmgr",
+        &[(
+            "services/redis/redis.go",
+            r#"
+package redis
+import "github.com/namsral/flag"
+var FlagRedisIpPort = flag.String("redis_ipport", "10.19.0.235:6379", "Host:Port of Redis")
+"#,
+        )],
+    );
+    repo(
+        &space.root,
+        "detector",
+        &[(
+            "kafka/produce.js",
+            "const { Kafka } = require('kafkajs');\nasync function run(p) { await p.send({ topic: 'aggr-po-traffic', messages: [] }); }\n",
+        )],
+    );
+    let output = generate_folder(&space.root);
+    assert_eq!(output.code, 0, "{}", output.stderr);
+    let aggr = read_md(&space.root.join("aggr"));
+    assert!(aggr.contains("## Redis"), "aggr:\n{aggr}");
+    assert!(aggr.contains("`thrmgr`"), "aggr redis:\n{aggr}");
+    assert!(
+        aggr.contains("`aggr-po-traffic`") && aggr.contains("consumes ← `detector`"),
+        "aggr kafka:\n{aggr}"
+    );
+}
+
+#[test]
 fn bgp_speaker_does_not_drop_events2notify() {
     let log_service = std::fs::read_to_string(
         r"C:\Users\SergiiZiborov\Documents\GitHub\log-service\service\service.go",
