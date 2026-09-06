@@ -1,6 +1,7 @@
 // Assembles the weavatrix-md npm package around prebuilt binaries.
 // Node built-ins only: no third-party code, no install scripts, no network.
 //
+//   node scripts/build-npm-packages.mjs universal <artifacts-root> [version]
 //   node scripts/build-npm-packages.mjs current <platform-key> <binary-path> [version]
 import {
     chmodSync,
@@ -31,12 +32,24 @@ const wrapperManifest = JSON.parse(
     readFileSync(join(WRAPPER, 'package.json'), 'utf8').replace(/^\uFEFF/, ''),
 )
 const [, , mode, ...rest] = process.argv
-if (mode !== 'current') usage()
+if (!mode) usage()
 
-const [platform, binaryPath, versionArg] = rest
-const entry = PLATFORMS[platform]
-if (!entry || !binaryPath) usage()
-assemble(versionArg || wrapperManifest.version, { [platform]: binaryPath })
+if (mode === 'current') {
+    const [platform, binaryPath, versionArg] = rest
+    const entry = PLATFORMS[platform]
+    if (!entry || !binaryPath) usage()
+    assemble(versionArg || wrapperManifest.version, { [platform]: binaryPath })
+} else if (mode === 'universal') {
+    const [artifactsRoot, versionArg] = rest
+    if (!artifactsRoot) usage()
+    const binaries = {}
+    for (const [platform, { binary }] of Object.entries(PLATFORMS)) {
+        binaries[platform] = join(artifactsRoot, platform, binary)
+    }
+    assemble(versionArg || wrapperManifest.version, binaries)
+} else {
+    usage()
+}
 
 function assemble(version, binaries) {
     const target = join(DIST, 'weavatrix-md')
@@ -52,13 +65,16 @@ function assemble(version, binaries) {
         const destination = join(target, 'bin', 'native', platformKey, binary)
         mkdirSync(dirname(destination), { recursive: true })
         copyFileSync(source, destination)
-        if (os !== 'win32') chmodSync(destination, 0x1ed)
+        if (os !== 'win32') chmodSync(destination, 0o755)
     }
     console.log(`assembled ${target} @ ${version}`)
 }
 
 function usage() {
     console.error('usage:')
+    console.error(
+        '  node scripts/build-npm-packages.mjs universal <artifacts-root> [version]',
+    )
     console.error(
         '  node scripts/build-npm-packages.mjs current <platform-key> <binary-path> [version]',
     )
