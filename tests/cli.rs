@@ -11,6 +11,7 @@ fn help_and_version() {
     assert_eq!(help.code, 0);
     assert!(help.stdout.contains("weavatrix-md"));
     assert!(help.stdout.contains("--folder"));
+    assert!(help.stdout.contains("mcp"));
     let version = run(&["--version".to_owned()]);
     assert_eq!(version.code, 0);
     assert!(version.stdout.contains(VERSION));

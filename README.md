@@ -34,6 +34,7 @@ weavatrix-md /path/to/repo    # explicit target + siblings
 weavatrix-md --folder ~/work  # every Git repo under the folder
 weavatrix-md --check          # CI: fail if WEAVATRIX.md is stale
 weavatrix-md --stdout         # print instead of writing
+weavatrix-md mcp              # MCP stdio host (tool weavatrix_md)
 ```
 
 ## Example

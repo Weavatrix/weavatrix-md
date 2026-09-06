@@ -2,6 +2,7 @@
 
 ## 0.2.0 — 2026-09-03
 
+- MCP: `weavatrix-md mcp` and tool `weavatrix_md`.
 - Kafka: Go `flag.String` / `flag.StringVar` topic defaults and kafka-go Reader/Writer.
 - Shared `logs` / similar topics match when a unique producer/consumer pair exists.
 - Redis and Vault identities (`redis://`, `REDIS_URL`, `VAULT_ADDR`) as neighborhood sections.

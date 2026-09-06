@@ -10,6 +10,7 @@ mod cli;
 mod detector;
 mod discover;
 mod error;
+mod mcp;
 mod model;
 mod normalize;
 mod render;
@@ -26,6 +27,7 @@ pub use model::{
     DatabaseRelation, KafkaObservation, KafkaRelation, KafkaRole, RepoId, RepoInventory,
     RepositoryMap,
 };
+pub use mcp::serve as serve_mcp;
 pub use render::render;
 pub use write::FILENAME;
 

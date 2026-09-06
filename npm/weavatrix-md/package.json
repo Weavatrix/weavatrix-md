@@ -17,17 +17,20 @@
     "node": ">=18"
   },
   "bin": {
-    "weavatrix-md": "bin/weavatrix-md.mjs"
+    "weavatrix-md": "bin/weavatrix-md.mjs",
+    "weavatrix-md-mcp": "bin/weavatrix-md-mcp.mjs"
   },
   "files": [
     "bin",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "skill"
   ],
   "keywords": [
     "weavatrix",
     "integration-map",
     "kafka",
+    "mcp",
     "static-analysis",
     "agents",
     "rust"

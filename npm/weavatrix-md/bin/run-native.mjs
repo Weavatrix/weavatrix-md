@@ -1,15 +1,15 @@
 import { spawn } from 'node:child_process'
 import { resolveBinary } from './resolve-binary.mjs'
 
-export function runNative() {
+export function runNative(command, label = 'weavatrix-md') {
     const binary = resolveBinary()
-    const args = process.argv.slice(2)
+    const args = command ? [command, ...process.argv.slice(2)] : process.argv.slice(2)
     if (['darwin', 'linux'].includes(process.platform) && typeof process.execve === 'function') {
         process.execve(binary, [binary, ...args], process.env)
     }
     const child = spawn(binary, args, { stdio: 'inherit', windowsHide: true })
     child.on('error', (error) => {
-        console.error(`weavatrix-md: failed to start native binary: ${error.message}`)
+        console.error(`${label}: failed to start native binary: ${error.message}`)
         process.exit(1)
     })
     child.on('exit', (code, signal) => {

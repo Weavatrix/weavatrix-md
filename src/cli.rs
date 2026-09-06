@@ -99,6 +99,7 @@ pub fn usage() -> &'static str {
 Usage:
   weavatrix-md [PATH]
   weavatrix-md --folder DIR
+  weavatrix-md mcp
   weavatrix-md --help
   weavatrix-md --version
 

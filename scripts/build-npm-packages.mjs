@@ -46,6 +46,7 @@ function assemble(version, binaries) {
     writeFileSync(join(target, 'package.json'), `${JSON.stringify(manifest, null, 2)}\n`)
     copyFileSync(join(ROOT, 'LICENSE'), join(target, 'LICENSE'))
     copyFileSync(join(ROOT, 'README.md'), join(target, 'README.md'))
+    cpSync(join(ROOT, 'skill'), join(target, 'skill'), { recursive: true })
     for (const [platformKey, source] of Object.entries(binaries)) {
         const { os, binary } = PLATFORMS[platformKey]
         const destination = join(target, 'bin', 'native', platformKey, binary)
