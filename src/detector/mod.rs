@@ -50,6 +50,12 @@ pub(crate) fn looks_like_topic(value: &str) -> bool {
     if trimmed.contains(' ') || trimmed.contains('\n') {
         return false;
     }
+    if matches!(
+        trimmed.to_ascii_lowercase().as_str(),
+        "topic" | "topics" | "name" | "key" | "value" | "data" | "msg" | "message"
+    ) {
+        return false;
+    }
     trimmed
         .chars()
         .all(|character| character.is_ascii_alphanumeric() || matches!(character, '.' | '_' | '-'))

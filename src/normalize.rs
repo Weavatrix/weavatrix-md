@@ -101,8 +101,9 @@ pub fn is_generic_route(route: &str) -> bool {
     )
 }
 
-/// Generic Kafka topics that need a cluster hint.
+/// Generic Kafka topics. Still matched when a unique producer/consumer pair exists.
 #[must_use]
+#[allow(dead_code)]
 pub fn is_generic_topic(topic: &str) -> bool {
     matches!(
         topic.to_ascii_lowercase().as_str(),

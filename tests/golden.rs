@@ -239,3 +239,182 @@ fn check_detects_stale_file() {
     ]);
     assert_eq!(check.code, 1, "{}", check.stderr);
 }
+
+#[test]
+fn go_flag_string_kafka_pair() {
+    let space = workspace("go-flags");
+    repo(
+        &space.root,
+        "log-service",
+        &[(
+            "service/service.go",
+            r#"
+package service
+import (
+    "flag"
+    "github.com/segmentio/kafka-go"
+)
+var flagTopicIn = flag.String("ls_kafka_topic_in", "logs", "kafka in topic")
+var flagTopicOut = flag.String("ls_kafka_topic_out", "events2notify", "kafka out topic")
+func run() {
+    _ = kafka.NewReader(kafka.ReaderConfig{Topic: *flagTopicIn})
+    _ = kafka.NewWriter(kafka.WriterConfig{Topic: *flagTopicOut})
+}
+"#,
+        )],
+    );
+    repo(
+        &space.root,
+        "notifier",
+        &[(
+            "infra/kafka/kafka.go",
+            r#"
+package kafka
+import (
+    "flag"
+    "github.com/segmentio/kafka-go"
+)
+var flagEventsTopic = flag.String("eh_notifier_kafka_topic", "events2notify", "kafka in topic")
+func consume() {
+    _ = kafka.NewReader(kafka.ReaderConfig{Topic: *flagEventsTopic})
+}
+"#,
+        )],
+    );
+    repo(
+        &space.root,
+        "logger",
+        &[(
+            "logsender/sender.go",
+            r#"
+package logsender
+import (
+    "flag"
+    "github.com/segmentio/kafka-go"
+)
+var flagKafkaTopic = flag.String("logs_topic", "logs", "kafka topic name for logs")
+func send() {
+    _ = kafka.NewWriter(kafka.WriterConfig{Topic: *flagKafkaTopic})
+}
+"#,
+        )],
+    );
+    let output = generate_folder(&space.root);
+    assert_eq!(output.code, 0, "{}", output.stderr);
+    let logs = read_md(&space.root.join("log-service"));
+    assert!(logs.contains("`events2notify`"), "{logs}");
+    assert!(logs.contains("produces → `notifier`"), "{logs}");
+    assert!(logs.contains("`logs`"), "{logs}");
+    assert!(logs.contains("consumes ← `logger`"), "{logs}");
+    let notifier = read_md(&space.root.join("notifier"));
+    assert!(notifier.contains("consumes ← `log-service`"), "{notifier}");
+}
+
+#[test]
+fn namsral_flag_events2notify() {
+    let space = workspace("namsral");
+    repo(
+        &space.root,
+        "log-service",
+        &[(
+            "service/service.go",
+            "package service\nimport \"github.com/namsral/flag\"\nvar flagTopicOut = flag.String(\"ls_kafka_topic_out\", \"events2notify\", \"kafka out topic\")\n",
+        )],
+    );
+    repo(
+        &space.root,
+        "notifier",
+        &[(
+            "infra/kafka/kafka.go",
+            "package kafka\nimport (\n\t\"github.com/namsral/flag\"\n\t\"github.com/segmentio/kafka-go\"\n)\nvar (\n\tflagEventsTopic = flag.String(\"eh_notifier_kafka_topic\", \"events2notify\", \"kafka in topic\")\n)\nfunc CreateEventsEngine() { _ = kafka.NewReader(kafka.ReaderConfig{}) }\n",
+        )],
+    );
+    let output = generate_folder(&space.root);
+    assert_eq!(output.code, 0, "{}", output.stderr);
+    let logs = read_md(&space.root.join("log-service"));
+    let notifier = read_md(&space.root.join("notifier"));
+    assert!(logs.contains("`events2notify`"), "log-service:\n{logs}");
+    assert!(
+        logs.contains("produces → `notifier`"),
+        "log-service:\n{logs}"
+    );
+    assert!(
+        notifier.contains("consumes ← `log-service`"),
+        "notifier:\n{notifier}"
+    );
+}
+
+#[test]
+fn redis_and_vault_shared_identity() {
+    let space = workspace("stores");
+    repo(
+        &space.root,
+        "api",
+        &[(
+            ".env.example",
+            "REDIS_URL=redis://cache.internal:6379/0\nVAULT_ADDR=https://vault.internal:8200\n",
+        )],
+    );
+    repo(
+        &space.root,
+        "worker",
+        &[(
+            ".env.example",
+            "REDIS_URL=redis://cache.internal:6379/0\nVAULT_ADDR=https://vault.internal:8200\n",
+        )],
+    );
+    let output = generate_folder(&space.root);
+    assert_eq!(output.code, 0, "{}", output.stderr);
+    let md = read_md(&space.root.join("api"));
+    assert!(md.contains("## Redis"), "{md}");
+    assert!(
+        md.contains("Redis / `0`") || md.contains("Redis / `cache.internal`"),
+        "{md}"
+    );
+    assert!(md.contains("`worker`"), "{md}");
+    assert!(md.contains("## Vault"), "{md}");
+    assert!(
+        md.contains("`vault.internal`") || md.contains("Vault /"),
+        "{md}"
+    );
+}
+
+#[test]
+fn bgp_speaker_does_not_drop_events2notify() {
+    let log_service = std::fs::read_to_string(
+        r"C:\Users\SergiiZiborov\Documents\GitHub\log-service\service\service.go",
+    );
+    let notifier = std::fs::read_to_string(
+        r"C:\Users\SergiiZiborov\Documents\GitHub\notifier\infra\kafka\kafka.go",
+    );
+    let bgp = std::fs::read_to_string(
+        r"C:\Users\SergiiZiborov\Documents\GitHub\bgp-speaker\kafkareader\kafkareader.go",
+    );
+    let (Ok(log_service), Ok(notifier), Ok(bgp)) = (log_service, notifier, bgp) else {
+        return;
+    };
+    let space = workspace("bgp-mix");
+    repo(
+        &space.root,
+        "log-service",
+        &[("service/service.go", log_service.as_str())],
+    );
+    repo(
+        &space.root,
+        "notifier",
+        &[("infra/kafka/kafka.go", notifier.as_str())],
+    );
+    repo(
+        &space.root,
+        "bgp-speaker",
+        &[("kafkareader/kafkareader.go", bgp.as_str())],
+    );
+    let output = generate_folder(&space.root);
+    assert_eq!(output.code, 0, "{}", output.stderr);
+    let logs = read_md(&space.root.join("log-service"));
+    let bgp_md = read_md(&space.root.join("bgp-speaker"));
+    assert!(
+        logs.contains("`events2notify`"),
+        "log-service lost events2notify:\n{logs}\nbgp:\n{bgp_md}"
+    );
+}

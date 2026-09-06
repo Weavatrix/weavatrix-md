@@ -97,6 +97,10 @@ pub enum DatabaseEngine {
     SqlServer,
     /// SQLite (never a cross-repo edge by default).
     Sqlite,
+    /// Redis.
+    Redis,
+    /// HashiCorp Vault.
+    Vault,
 }
 
 impl DatabaseEngine {
@@ -110,6 +114,23 @@ impl DatabaseEngine {
             Self::Clickhouse => "ClickHouse",
             Self::SqlServer => "SQL Server",
             Self::Sqlite => "SQLite",
+            Self::Redis => "Redis",
+            Self::Vault => "Vault",
+        }
+    }
+
+    /// Markdown section this engine belongs to.
+    #[must_use]
+    pub const fn section(self) -> &'static str {
+        match self {
+            Self::Redis => "Redis",
+            Self::Vault => "Vault",
+            Self::Postgres
+            | Self::Mongo
+            | Self::Mysql
+            | Self::Clickhouse
+            | Self::SqlServer
+            | Self::Sqlite => "Database",
         }
     }
 }

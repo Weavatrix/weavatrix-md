@@ -131,6 +131,7 @@ fn skip_path(relative: &str) -> bool {
     path.contains("/test/")
         || path.contains("/tests/")
         || path.contains("/__tests__/")
+        || path.contains("/__test__/")
         || path.contains("/testdata/")
         || path.contains(".test.")
         || path.contains(".spec.")

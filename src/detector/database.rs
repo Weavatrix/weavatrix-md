@@ -119,6 +119,9 @@ fn scan_unquoted_dsns(inventory: &mut RepoInventory, source: &str) {
         if let Some(observation) = parse_sql_server(line) {
             inventory.databases.push(observation);
         }
+        if let Some(observation) = parse_named_addr(line) {
+            inventory.databases.push(observation);
+        }
     }
 }
 
@@ -137,6 +140,9 @@ fn dsn_offset(line: &str) -> Option<usize> {
         "jdbc:mysql:",
         "jdbc:sqlserver:",
         "sqlite://",
+        "redis://",
+        "rediss://",
+        "vault://",
     ];
     let lower = line.to_ascii_lowercase();
     SCHEMES.iter().find_map(|scheme| lower.find(scheme))
@@ -188,6 +194,9 @@ fn engine_from_scheme(lower: &str, original: &str) -> Option<(DatabaseEngine, St
         ("sqlserver://", DatabaseEngine::SqlServer),
         ("jdbc:sqlserver:", DatabaseEngine::SqlServer),
         ("sqlite://", DatabaseEngine::Sqlite),
+        ("rediss://", DatabaseEngine::Redis),
+        ("redis://", DatabaseEngine::Redis),
+        ("vault://", DatabaseEngine::Vault),
     ];
     for (scheme, engine) in pairs {
         if let Some(rest) = lower.strip_prefix(scheme) {
@@ -266,6 +275,57 @@ fn parse_sql_server(raw: &str) -> Option<DatabaseObservation> {
         database,
         localhost,
     })
+}
+
+fn parse_named_addr(line: &str) -> Option<DatabaseObservation> {
+    let trimmed = line.trim();
+    let (engine, value) =
+        if let Some(value) = env_assignment(trimmed, &["VAULT_ADDR", "VAULT_AGENT_ADDR"]) {
+            (DatabaseEngine::Vault, value)
+        } else {
+            let value = env_assignment(trimmed, &["REDIS_URL", "REDIS_ADDR", "REDIS_HOST"])?;
+            (DatabaseEngine::Redis, value)
+        };
+    if let Some(parsed) = parse_identity(&value) {
+        return Some(parsed);
+    }
+    let host = host_from_url_or_addr(&value)?;
+    if host_is_unresolved_env(&host) {
+        return None;
+    }
+    Some(DatabaseObservation {
+        engine,
+        host: Some(host.clone()),
+        database: None,
+        localhost: normalize::is_localhost(&host),
+    })
+}
+
+fn host_from_url_or_addr(value: &str) -> Option<String> {
+    let trimmed = value.trim();
+    let rest = trimmed
+        .strip_prefix("https://")
+        .or_else(|| trimmed.strip_prefix("http://"))
+        .unwrap_or(trimmed);
+    let hostport = rest.split('/').next().unwrap_or(rest);
+    let host = hostport
+        .split(':')
+        .next()
+        .unwrap_or(hostport)
+        .trim()
+        .trim_matches(['[', ']'])
+        .to_ascii_lowercase();
+    (!host.is_empty() && !host_is_unresolved_env(&host)).then_some(host)
+}
+
+fn env_assignment(line: &str, keys: &[&str]) -> Option<String> {
+    let stripped = line.trim_start_matches("export ").trim();
+    let (key, value) = stripped.split_once('=')?;
+    let key = key.trim().trim_matches(['"', '\'']);
+    if !keys.iter().any(|item| key.eq_ignore_ascii_case(item)) {
+        return None;
+    }
+    Some(crate::tokens::unquote(value.trim()))
 }
 
 fn host_is_unresolved_env(host: &str) -> bool {

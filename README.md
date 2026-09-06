@@ -10,7 +10,7 @@ Tiny deterministic cross-repository integration map for coding agents.
 `README.md`, `AGENTS.md`, and `CLAUDE.md`. The file answers a single question:
 
 > Which other repositories sit on the other side of this repo’s databases,
-> Kafka topics, and APIs?
+> Redis, Vault, Kafka topics, and APIs?
 
 It is not a graph engine, not MCP, and not Weavatrix. It depends only on
 [`weavatrix-scan`](https://crates.io/crates/weavatrix-scan) and
@@ -68,7 +68,9 @@ A runnable copy of this neighborhood lives in
 | Section | Identity | Direction |
 |---|---|---|
 | Database | engine + host + logical database | neighborhood, no arrows |
-| Kafka | topic, optional cluster hint | `produces →` / `consumes ←` |
+| Redis | host + logical database | neighborhood, no arrows |
+| Vault | host | neighborhood, no arrows |
+| Kafka | topic, including Go `flag.String` defaults and kafka-go | `produces →` / `consumes ←` |
 | API | host/service alias, or a globally unique non-generic route | `calls →` / `called by ←` |
 
 Precision over recall. A missing edge is acceptable. A false edge in committed

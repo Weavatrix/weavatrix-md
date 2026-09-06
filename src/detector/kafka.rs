@@ -14,6 +14,8 @@ const PRODUCER_CALLS: &[&str] = &[
     "NewWriter",
     "KafkaProducer",
     "KafkaTemplate",
+    "WriteMessages",
+    "WriteMessage",
 ];
 const CONSUMER_CALLS: &[&str] = &[
     "subscribe",
@@ -22,6 +24,8 @@ const CONSUMER_CALLS: &[&str] = &[
     "NewReader",
     "Consume",
     "KafkaConsumer",
+    "ReadMessage",
+    "FetchMessage",
 ];
 const PRODUCER_RECEIVERS: &[&str] = &["producer", "writer", "template"];
 const CONSUMER_RECEIVERS: &[&str] = &["consumer", "reader", "listener"];
@@ -46,11 +50,13 @@ pub(crate) fn detect_kafka(
         return;
     }
     let cluster = cluster_hint(source, stream, bindings);
+    let mut local = bindings.to_vec();
     if let Some(facts) = facts {
         for call in facts.calls() {
+            collect_flag_topic(inventory, &mut local, call, cluster.clone());
             let role = kafka_role(&call.name, call.receiver.as_deref());
             for argument in &call.string_arguments {
-                let topic = resolve_literal(argument, bindings);
+                let topic = resolve_literal(argument, &local);
                 if looks_like_topic(&topic)
                     && let Some(role) = role
                 {
@@ -58,7 +64,7 @@ pub(crate) fn detect_kafka(
                 }
             }
             for name in &call.name_arguments {
-                if let Some(topic) = resolve_binding(bindings, name)
+                if let Some(topic) = resolve_binding(&local, name)
                     && looks_like_topic(&topic)
                     && let Some(role) = role
                 {
@@ -68,6 +74,7 @@ pub(crate) fn detect_kafka(
         }
     }
     if let Some(stream) = stream {
+        collect_flag_assignments(stream, &mut local, inventory, cluster.as_deref());
         let mut index = 0;
         while index + 2 < stream.len() {
             if let Some(name) = stream.ident(index)
@@ -80,21 +87,173 @@ pub(crate) fn detect_kafka(
                 if stream.is_punct(cursor, "[") {
                     cursor += 1;
                 }
-                let literal = stream
-                    .string(cursor)
-                    .or_else(|| stream.ident(cursor).map(ToOwned::to_owned));
-                if let Some(value) = literal {
-                    let topic = resolve_literal(&value, bindings);
-                    if looks_like_topic(&topic)
-                        && let Some(role) = role_near(stream, index)
-                    {
-                        push(inventory, role, topic, cluster.clone());
-                    }
+                let topic = if let Some(literal) = stream.string(cursor) {
+                    Some(resolve_literal(&literal, &local))
+                } else if let Some(ident) = stream.ident(cursor) {
+                    resolve_binding(&local, ident)
+                } else {
+                    None
+                };
+                if let Some(topic) = topic
+                    && looks_like_topic(&topic)
+                    && let Some(role) = role_near(stream, index)
+                {
+                    push(inventory, role, topic, cluster.clone());
                 }
             }
             index += 1;
         }
     }
+}
+
+fn collect_flag_topic(
+    inventory: &mut RepoInventory,
+    bindings: &mut Vec<(String, String)>,
+    call: &weavatrix_parse::Reference,
+    cluster: Option<String>,
+) {
+    if !is_flag_string(&call.name, call.receiver.as_deref()) {
+        return;
+    }
+    let flag_name = call.string_arguments.first().map_or("", String::as_str);
+    let topic = call.string_arguments.get(1).map_or("", String::as_str);
+    let help = call.string_arguments.get(2).map_or("", String::as_str);
+    if !looks_like_topic(topic) {
+        return;
+    }
+    if let Some(owner) = call.owner.as_deref() {
+        bindings.push((owner.to_owned(), topic.to_owned()));
+    }
+    for name in &call.name_arguments {
+        if looks_like_ident(name) {
+            bindings.push((name.clone(), topic.to_owned()));
+        }
+    }
+    if let Some(role) = kafka_flag_role(flag_name, help) {
+        push(inventory, role, topic.to_owned(), cluster);
+    }
+}
+
+fn is_flag_string(name: &str, receiver: Option<&str>) -> bool {
+    matches!(name, "String" | "StringVar")
+        && receiver.is_some_and(|item| item.eq_ignore_ascii_case("flag") || item.contains("Flag"))
+}
+
+fn looks_like_ident(name: &str) -> bool {
+    let mut chars = name.chars();
+    chars.next().is_some_and(char::is_alphabetic)
+        && chars.all(|character| character.is_ascii_alphanumeric() || character == '_')
+}
+
+fn collect_flag_assignments(
+    stream: &Stream<'_>,
+    bindings: &mut Vec<(String, String)>,
+    inventory: &mut RepoInventory,
+    cluster: Option<&str>,
+) {
+    let mut index = 0;
+    while index + 5 < stream.len() {
+        let Some(lhs) = stream.ident(index) else {
+            index += 1;
+            continue;
+        };
+        let mut cursor = index + 1;
+        if stream.is_punct(cursor, ":") && stream.is_punct(cursor + 1, "=") {
+            cursor += 2;
+        } else if stream.is_punct(cursor, "=") {
+            cursor += 1;
+        } else {
+            index += 1;
+            continue;
+        }
+        let Some(receiver) = stream.ident(cursor) else {
+            index += 1;
+            continue;
+        };
+        if !(receiver.eq_ignore_ascii_case("flag") || receiver.contains("Flag"))
+            || !stream.is_punct(cursor + 1, ".")
+        {
+            index += 1;
+            continue;
+        }
+        let Some(call) = stream.ident(cursor + 2) else {
+            index += 1;
+            continue;
+        };
+        if call != "String" && call != "StringVar" {
+            index += 1;
+            continue;
+        }
+        let mut strings = Vec::new();
+        let mut scan = cursor + 3;
+        while scan < stream.len() && strings.len() < 3 {
+            if let Some(literal) = stream.string(scan) {
+                strings.push(literal);
+            }
+            if stream.is_punct(scan, ")") {
+                break;
+            }
+            scan += 1;
+        }
+        let flag_name = strings.first().map_or("", String::as_str);
+        let topic = strings.get(1).map_or("", String::as_str);
+        let help = strings.get(2).map_or("", String::as_str);
+        if looks_like_topic(topic) {
+            bindings.push((lhs.to_owned(), topic.to_owned()));
+            if let Some(role) = kafka_flag_role(flag_name, help) {
+                push(
+                    inventory,
+                    role,
+                    topic.to_owned(),
+                    cluster.map(ToOwned::to_owned),
+                );
+            }
+        }
+        index += 1;
+    }
+}
+
+fn kafka_flag_role(flag_name: &str, help: &str) -> Option<KafkaRole> {
+    let name = flag_name.to_ascii_lowercase();
+    let help = help.to_ascii_lowercase();
+    if !(name.contains("kafka")
+        || name.contains("topic")
+        || help.contains("kafka")
+        || help.contains("topic"))
+    {
+        return None;
+    }
+    if name.contains("topic_in")
+        || name.ends_with("_in")
+        || name.contains("_in_")
+        || help.contains("in topic")
+        || help.contains("consumer")
+        || help.contains("read topic")
+    {
+        return Some(KafkaRole::Consumer);
+    }
+    if name.contains("topic_out")
+        || name.ends_with("_out")
+        || name.contains("_out_")
+        || name.contains("producer")
+        || name.contains("notify_topic")
+        || name.contains("response")
+        || help.contains("out topic")
+        || help.contains("producer")
+        || help.contains("write topic")
+    {
+        return Some(KafkaRole::Producer);
+    }
+    if name.contains("logs_topic") || name == "logs_topic" {
+        return Some(KafkaRole::Producer);
+    }
+    if help.contains("in ") {
+        return Some(KafkaRole::Consumer);
+    }
+    if name.contains("kafka_topic") && !name.contains("out") {
+        return Some(KafkaRole::Consumer);
+    }
+    None
 }
 
 fn kafka_role(name: &str, receiver: Option<&str>) -> Option<KafkaRole> {
@@ -161,13 +320,16 @@ fn role_near(stream: &Stream<'_>, index: usize) -> Option<KafkaRole> {
 }
 
 fn cluster_hint(
-    source: &str,
+    _source: &str,
     stream: Option<&Stream<'_>>,
     bindings: &[(String, String)],
 ) -> Option<String> {
     if let Some(stream) = stream {
         for (key, value) in stream.properties(CLUSTER_KEYS) {
             let _ = key;
+            if looks_like_ident(&value) {
+                continue;
+            }
             let resolved = resolve_literal(&value, bindings);
             if let Some(host) = broker_host(&resolved) {
                 return Some(host);
@@ -179,23 +341,18 @@ fn cluster_hint(
             return Some(host);
         }
     }
-    for line in source.lines() {
-        let lower = line.to_ascii_lowercase();
-        if CLUSTER_KEYS.iter().any(|key| lower.contains(key))
-            && let Some(host) = broker_host(line)
-        {
-            return Some(host);
-        }
-    }
     None
 }
 
 fn broker_host(value: &str) -> Option<String> {
     let trimmed = value.trim().trim_matches(['"', '\'']);
+    if trimmed.contains('(') || trimmed.contains("messages.") {
+        return None;
+    }
     let candidate = trimmed
         .split([',', ';', ' '])
         .map(str::trim)
-        .find(|part| part.contains(':') || part.contains('.'))?;
+        .find(|part| part.contains(':'))?;
     if candidate.contains("://") {
         return None;
     }

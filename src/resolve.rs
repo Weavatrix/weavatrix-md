@@ -87,68 +87,24 @@ fn kafka_edges(inventories: &[RepoInventory]) -> BTreeMap<RepoName, Vec<KafkaRel
             }
         }
     }
-    let mut by_topic = BTreeMap::<String, TopicPeers>::new();
-    for ((_cluster, topic), peers) in topics {
-        by_topic.entry(topic).or_default().merge(peers);
+    let mut by_topic = BTreeMap::<String, BTreeMap<Option<String>, TopicPeers>>::new();
+    for ((cluster, topic), peers) in topics {
+        by_topic.entry(topic).or_default().insert(cluster, peers);
     }
     let mut maps = BTreeMap::<RepoName, BTreeMap<String, KafkaRelation>>::new();
-    for (topic, peers) in by_topic {
-        if peers.producers.is_empty() || peers.consumers.is_empty() {
-            continue;
-        }
-        if peers.clusters.len() > 1 {
-            continue;
-        }
-        if normalize::is_generic_topic(&topic)
-            && (peers.clusters.is_empty() || peers.missing_cluster)
-        {
-            continue;
-        }
-        for producer in &peers.producers {
-            let consumers: Vec<String> = peers
-                .consumers
-                .iter()
-                .filter(|consumer| *consumer != producer)
-                .cloned()
-                .collect();
-            if consumers.is_empty() {
-                continue;
+    for (topic, clusters) in by_topic {
+        let named: Vec<&String> = clusters.keys().flatten().collect();
+        let groups: Vec<TopicPeers> = if named.len() > 1 {
+            clusters.into_values().collect()
+        } else {
+            let mut merged = TopicPeers::default();
+            for peers in clusters.into_values() {
+                merged.merge(peers);
             }
-            let relation = maps
-                .entry(producer.clone())
-                .or_default()
-                .entry(topic.clone())
-                .or_insert_with(|| KafkaRelation {
-                    topic: topic.clone(),
-                    produces: Vec::new(),
-                    consumes: Vec::new(),
-                });
-            relation.produces.extend(consumers);
-            relation.produces.sort();
-            relation.produces.dedup();
-        }
-        for consumer in &peers.consumers {
-            let producers: Vec<String> = peers
-                .producers
-                .iter()
-                .filter(|producer| *producer != consumer)
-                .cloned()
-                .collect();
-            if producers.is_empty() {
-                continue;
-            }
-            let relation = maps
-                .entry(consumer.clone())
-                .or_default()
-                .entry(topic.clone())
-                .or_insert_with(|| KafkaRelation {
-                    topic: topic.clone(),
-                    produces: Vec::new(),
-                    consumes: Vec::new(),
-                });
-            relation.consumes.extend(producers);
-            relation.consumes.sort();
-            relation.consumes.dedup();
+            vec![merged]
+        };
+        for peers in groups {
+            emit_kafka_topic(&mut maps, &topic, &peers);
         }
     }
     maps.into_iter()
@@ -158,6 +114,62 @@ fn kafka_edges(inventories: &[RepoInventory]) -> BTreeMap<RepoName, Vec<KafkaRel
             (repo, relations)
         })
         .collect()
+}
+
+fn emit_kafka_topic(
+    maps: &mut BTreeMap<RepoName, BTreeMap<String, KafkaRelation>>,
+    topic: &str,
+    peers: &TopicPeers,
+) {
+    if peers.producers.is_empty() || peers.consumers.is_empty() {
+        return;
+    }
+    for producer in &peers.producers {
+        let consumers: Vec<String> = peers
+            .consumers
+            .iter()
+            .filter(|consumer| *consumer != producer)
+            .cloned()
+            .collect();
+        if consumers.is_empty() {
+            continue;
+        }
+        let relation = maps
+            .entry(producer.clone())
+            .or_default()
+            .entry(topic.to_owned())
+            .or_insert_with(|| KafkaRelation {
+                topic: topic.to_owned(),
+                produces: Vec::new(),
+                consumes: Vec::new(),
+            });
+        relation.produces.extend(consumers);
+        relation.produces.sort();
+        relation.produces.dedup();
+    }
+    for consumer in &peers.consumers {
+        let producers: Vec<String> = peers
+            .producers
+            .iter()
+            .filter(|producer| *producer != consumer)
+            .cloned()
+            .collect();
+        if producers.is_empty() {
+            continue;
+        }
+        let relation = maps
+            .entry(consumer.clone())
+            .or_default()
+            .entry(topic.to_owned())
+            .or_insert_with(|| KafkaRelation {
+                topic: topic.to_owned(),
+                produces: Vec::new(),
+                consumes: Vec::new(),
+            });
+        relation.consumes.extend(producers);
+        relation.consumes.sort();
+        relation.consumes.dedup();
+    }
 }
 
 fn database_edges(inventories: &[RepoInventory]) -> BTreeMap<RepoName, Vec<DatabaseRelation>> {

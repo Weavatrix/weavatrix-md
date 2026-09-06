@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.0 — 2026-09-03
+
+- Kafka: Go `flag.String` / `flag.StringVar` topic defaults and kafka-go Reader/Writer.
+- Shared `logs` / similar topics match when a unique producer/consumer pair exists.
+- Redis and Vault identities (`redis://`, `REDIS_URL`, `VAULT_ADDR`) as neighborhood sections.
+
 ## 0.1.0 — 2026-09-03
 
 - Local CLI: current repo, explicit path, `--folder`, `--check`, `--stdout`.
