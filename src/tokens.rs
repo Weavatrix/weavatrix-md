@@ -143,16 +143,20 @@ impl<'source> Stream<'source> {
 #[must_use]
 pub fn unquote(raw: &str) -> String {
     let trimmed = raw.trim();
-    let start = trimmed.find(['"', '\'', '`']).unwrap_or(0);
+    let Some(start) = trimmed.find(['"', '\'', '`']) else {
+        return trimmed.to_owned();
+    };
     let bytes = trimmed.as_bytes();
     if start >= bytes.len() {
         return trimmed.to_owned();
     }
     let quote = bytes[start];
+    // `start` is an ASCII quote byte, so `start + 1` is a char boundary.
     let rest = &trimmed[start + 1..];
-    let Some(end) = rest.rfind(quote as char) else {
+    let Some(end) = rest.as_bytes().iter().rposition(|&b| b == quote) else {
         return rest.to_owned();
     };
+    // `end` indexes an ASCII quote in `rest`, so it is a char boundary.
     unescape(&rest[..end])
 }
 

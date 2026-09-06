@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.3 — 2026-09-06
+
+- Fix panic on non-ASCII unquoted env/README values (`unquote` char boundary).
+
 ## 0.2.2 — 2026-09-06
 
 - API: `*_SERVICE_URL` / `EDGE_*_SERVICE_URL` bindings map to the peer service
