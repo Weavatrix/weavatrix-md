@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.1 — 2026-09-06
+
+- Kafka: bind `process.env.X || 'topic'` defaults; treat `sendMessage` /
+  `sendMessages` / `initConsumerForATopic` as produce/consume; prefer topic
+  suffix (`_in` / `_out`) and flag name over misleading help text.
+- API: unique service-host alias is enough for an edge (no longer requires the
+  provider to expose a matching route).
+
 ## 0.2.0 — 2026-09-03
 
 - MCP: `weavatrix-md mcp` and tool `weavatrix_md`.

@@ -54,7 +54,8 @@ impl<'source> Stream<'source> {
         Some(unquote(self.text(index)))
     }
 
-    /// Local `NAME = "literal"` or `NAME := "literal"` bindings.
+    /// Local `NAME = "literal"`, `NAME := "literal"`, or
+    /// `NAME = … || "literal"` / `NAME = … ?? "literal"` fallback bindings.
     #[must_use]
     pub fn bindings(&self) -> Vec<(String, String)> {
         let mut out = Vec::new();
@@ -62,22 +63,52 @@ impl<'source> Stream<'source> {
         while index + 2 < self.len() {
             if let Some(name) = self.ident(index) {
                 let operator = index + 1;
-                let value = index + 2;
                 let assigned = self.is_punct(operator, "=")
                     || (self.is_punct(operator, ":") && self.is_punct(operator + 1, "="));
                 let value_index =
                     if self.is_punct(operator, ":") && self.is_punct(operator + 1, "=") {
                         operator + 2
                     } else {
-                        value
+                        operator + 1
                     };
-                if assigned && let Some(literal) = self.string(value_index) {
-                    out.push((name.to_owned(), literal));
+                if assigned {
+                    if let Some(literal) = self.string(value_index) {
+                        out.push((name.to_owned(), literal));
+                    } else if let Some(literal) = self.fallback_string(value_index) {
+                        out.push((name.to_owned(), literal));
+                    }
                 }
             }
             index += 1;
         }
         out
+    }
+
+    /// Scans a short RHS for `|| "literal"` / `?? "literal"` (env defaults).
+    fn fallback_string(&self, start: usize) -> Option<String> {
+        let end = (start + 24).min(self.len());
+        let mut cursor = start;
+        while cursor + 1 < end {
+            if self.is_punct(cursor, ";") || self.is_punct(cursor, ",") {
+                break;
+            }
+            if (self.is_punct(cursor, "|") && self.is_punct(cursor + 1, "|"))
+                || (self.is_punct(cursor, "?") && self.is_punct(cursor + 1, "?"))
+            {
+                let mut look = cursor + 2;
+                while look < end {
+                    if let Some(literal) = self.string(look) {
+                        return Some(literal);
+                    }
+                    if self.is_punct(look, ";") || self.is_punct(look, ",") {
+                        break;
+                    }
+                    look += 1;
+                }
+            }
+            cursor += 1;
+        }
+        None
     }
 
     /// `key: "value"` / `key = "value"` property strings, including `topics = ["a"]`.

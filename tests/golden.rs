@@ -380,6 +380,85 @@ fn redis_and_vault_shared_identity() {
 }
 
 #[test]
+fn thr_in_thr_out_and_controller_http_host() {
+    let space = workspace("thr-controller");
+    repo(
+        &space.root,
+        "controller-rest-api",
+        &[(
+            "services/messaging/kafka.js",
+            r#"
+const { Kafka } = require('kafkajs');
+const IN_THRESHOLDS_DISCOVERY = process.env.IN_THRESHOLDS_DISCOVERY || 'thr_in';
+const IN_TOPIC_THRESHOLDS = process.env.IN_THRESHOLDS_DISCOVERY || 'thr_out';
+const THRESHOLDS_GROUP_ID = process.env.KAFKA_THRESHOLDS_GROUP_ID || 'thr_group_id';
+async function start() {
+  thresholdsConsumer = await initConsumerForATopic({
+    topic: IN_TOPIC_THRESHOLDS,
+    groupId: THRESHOLDS_GROUP_ID,
+  });
+}
+const sendThresholdDiscoveryService = async (msg, key) => {
+  return await sendMessage(IN_THRESHOLDS_DISCOVERY, msg, key);
+};
+"#,
+        )],
+    );
+    repo(
+        &space.root,
+        "thrmgr",
+        &[
+            (
+                "services/kafka/kafka.go",
+                r#"
+package kafka
+import (
+	"github.com/namsral/flag"
+	"github.com/segmentio/kafka-go"
+)
+var (
+	FlagTopicIn         = flag.String("thr_kafka_topic_in", "thr_in", "T-Filters kafka in topic")
+	FlagTopicController = flag.String("thr_kafka_topic_controller", "thr_out", "T-Filters kafka in topic")
+)
+func CreateEngine() {
+	_ = kafka.NewReader(kafka.ReaderConfig{Topic: *FlagTopicIn})
+	_ = &kafka.Writer{}
+}
+"#,
+            ),
+            (
+                "pocache/pocache.go",
+                r#"
+package pocache
+import "github.com/namsral/flag"
+var FlagGetPOURL = flag.String("thr_get_po_url", "http://controller-rest-api:3300/internal/warRoom/protectedObject/%v", "Get PO URL")
+"#,
+            ),
+        ],
+    );
+    let output = generate_folder(&space.root);
+    assert_eq!(output.code, 0, "{}", output.stderr);
+    let controller = read_md(&space.root.join("controller-rest-api"));
+    let thrmgr = read_md(&space.root.join("thrmgr"));
+    assert!(
+        controller.contains("`thr_in`") && controller.contains("produces → `thrmgr`"),
+        "controller:\n{controller}"
+    );
+    assert!(
+        controller.contains("`thr_out`") && controller.contains("consumes ← `thrmgr`"),
+        "controller:\n{controller}"
+    );
+    assert!(
+        thrmgr.contains("calls → `controller-rest-api`"),
+        "thrmgr:\n{thrmgr}"
+    );
+    assert!(
+        controller.contains("called by ← `thrmgr`"),
+        "controller:\n{controller}"
+    );
+}
+
+#[test]
 fn bgp_speaker_does_not_drop_events2notify() {
     let log_service = std::fs::read_to_string(
         r"C:\Users\SergiiZiborov\Documents\GitHub\log-service\service\service.go",

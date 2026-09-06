@@ -7,6 +7,8 @@ use weavatrix_parse::Facts;
 
 const PRODUCER_CALLS: &[&str] = &[
     "send",
+    "sendMessage",
+    "sendMessages",
     "produce",
     "Produce",
     "ProduceSync",
@@ -26,6 +28,8 @@ const CONSUMER_CALLS: &[&str] = &[
     "KafkaConsumer",
     "ReadMessage",
     "FetchMessage",
+    "initConsumerForATopic",
+    "initConsumer",
 ];
 const PRODUCER_RECEIVERS: &[&str] = &["producer", "writer", "template"];
 const CONSUMER_RECEIVERS: &[&str] = &["consumer", "reader", "listener"];
@@ -129,7 +133,7 @@ fn collect_flag_topic(
             bindings.push((name.clone(), topic.to_owned()));
         }
     }
-    if let Some(role) = kafka_flag_role(flag_name, help) {
+    if let Some(role) = kafka_flag_role(flag_name, help, topic) {
         push(inventory, role, topic.to_owned(), cluster);
     }
 }
@@ -200,7 +204,7 @@ fn collect_flag_assignments(
         let help = strings.get(2).map_or("", String::as_str);
         if looks_like_topic(topic) {
             bindings.push((lhs.to_owned(), topic.to_owned()));
-            if let Some(role) = kafka_flag_role(flag_name, help) {
+            if let Some(role) = kafka_flag_role(flag_name, help, topic) {
                 push(
                     inventory,
                     role,
@@ -213,9 +217,10 @@ fn collect_flag_assignments(
     }
 }
 
-fn kafka_flag_role(flag_name: &str, help: &str) -> Option<KafkaRole> {
+fn kafka_flag_role(flag_name: &str, help: &str, topic: &str) -> Option<KafkaRole> {
     let name = flag_name.to_ascii_lowercase();
     let help = help.to_ascii_lowercase();
+    let topic = topic.to_ascii_lowercase();
     if !(name.contains("kafka")
         || name.contains("topic")
         || help.contains("kafka")
@@ -223,32 +228,35 @@ fn kafka_flag_role(flag_name: &str, help: &str) -> Option<KafkaRole> {
     {
         return None;
     }
-    if name.contains("topic_in")
-        || name.ends_with("_in")
-        || name.contains("_in_")
-        || help.contains("in topic")
-        || help.contains("consumer")
-        || help.contains("read topic")
-    {
-        return Some(KafkaRole::Consumer);
-    }
-    if name.contains("topic_out")
+    // Prefer the topic default and flag name over help text (help is often wrong).
+    if topic.ends_with("_out")
+        || topic.ends_with(".out")
+        || name.contains("topic_out")
         || name.ends_with("_out")
         || name.contains("_out_")
+        || name.contains("topic_controller")
         || name.contains("producer")
         || name.contains("notify_topic")
         || name.contains("response")
-        || help.contains("out topic")
-        || help.contains("producer")
-        || help.contains("write topic")
     {
         return Some(KafkaRole::Producer);
     }
-    if name.contains("logs_topic") || name == "logs_topic" {
+    if topic.ends_with("_in")
+        || topic.ends_with(".in")
+        || name.contains("topic_in")
+        || name.ends_with("_in")
+        || name.contains("_in_")
+    {
+        return Some(KafkaRole::Consumer);
+    }
+    if help.contains("out topic") || help.contains("producer") || help.contains("write topic") {
         return Some(KafkaRole::Producer);
     }
-    if help.contains("in ") {
+    if help.contains("in topic") || help.contains("consumer") || help.contains("read topic") {
         return Some(KafkaRole::Consumer);
+    }
+    if name.contains("logs_topic") || name == "logs_topic" || topic == "logs" {
+        return Some(KafkaRole::Producer);
     }
     if name.contains("kafka_topic") && !name.contains("out") {
         return Some(KafkaRole::Consumer);
@@ -271,6 +279,10 @@ fn kafka_role(name: &str, receiver: Option<&str>) -> Option<KafkaRole> {
                 return Some(KafkaRole::Producer);
             }
             return None;
+        }
+        // sendMessage(topic, …) / sendMessages(topic, …) — topic is the first arg.
+        if name.eq_ignore_ascii_case("sendMessage") || name.eq_ignore_ascii_case("sendMessages") {
+            return Some(KafkaRole::Producer);
         }
         return Some(KafkaRole::Producer);
     }

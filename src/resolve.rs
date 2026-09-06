@@ -249,7 +249,6 @@ fn api_edges(
 ) -> BTreeMap<RepoName, ApiRelation> {
     let mut providers: BTreeMap<(Option<String>, String), BTreeSet<RepoName>> = BTreeMap::new();
     let mut grpc_providers: BTreeMap<String, BTreeSet<RepoName>> = BTreeMap::new();
-    let mut exposed_by_repo: BTreeMap<RepoName, Vec<(Option<String>, String)>> = BTreeMap::new();
     for inventory in inventories {
         for item in &inventory.api {
             if item.direction != ApiDirection::Exposes {
@@ -267,13 +266,9 @@ fn api_edges(
             }
             let key = (item.method.clone(), item.resource.clone());
             providers
-                .entry(key.clone())
+                .entry(key)
                 .or_default()
                 .insert(inventory.repo.name.clone());
-            exposed_by_repo
-                .entry(inventory.repo.name.clone())
-                .or_default()
-                .push(key);
         }
     }
     let mut outgoing = BTreeMap::<RepoName, BTreeSet<RepoName>>::new();
@@ -296,14 +291,12 @@ fn api_edges(
             if item.protocol != ApiProtocol::Http {
                 continue;
             }
+            // Unique service-host alias is enough (README: host/service alias).
+            // Do not require the provider to also expose a matching route — server
+            // detections are often incomplete (dynamic routers, internal paths).
             if let Some(host) = &item.host_hint
                 && let Some(provider) = unique_host(alias_index, host)
                 && provider != inventory.repo.name
-                && route_compatible(
-                    exposed_by_repo.get(&provider),
-                    item.method.as_deref(),
-                    &item.resource,
-                )
             {
                 remember(
                     &mut outgoing,
@@ -356,34 +349,6 @@ fn unique_host(alias_index: &BTreeMap<String, BTreeSet<RepoName>>, host: &str) -
         }
     }
     (found.len() == 1).then(|| found.into_iter().next().unwrap_or_default())
-}
-
-fn route_compatible(
-    exposed: Option<&Vec<(Option<String>, String)>>,
-    method: Option<&str>,
-    route: &str,
-) -> bool {
-    let Some(exposed) = exposed else {
-        return false;
-    };
-    let client = normalize::normalize_route(route);
-    exposed.iter().any(|(exposed_method, exposed_route)| {
-        let method_ok = match (exposed_method.as_deref(), method) {
-            (Some(left), Some(right)) => left.eq_ignore_ascii_case(right),
-            _ => true,
-        };
-        if !method_ok {
-            return false;
-        }
-        let provider = normalize::normalize_route(exposed_route);
-        if provider == client {
-            return true;
-        }
-        if provider == "/" || client == "/" {
-            return false;
-        }
-        client.starts_with(&format!("{provider}/")) || provider.starts_with(&format!("{client}/"))
-    })
 }
 
 fn remember(
