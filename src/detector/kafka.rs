@@ -80,7 +80,7 @@ pub(crate) fn detect_kafka(
     }
     if let Some(stream) = stream {
         collect_flag_assignments(stream, &mut local, inventory, cluster.as_deref());
-        collect_topic_constants(stream, inventory, cluster.clone());
+        collect_topic_constants(stream, inventory, cluster.as_deref());
         let mut index = 0;
         while index + 2 < stream.len() {
             if let Some(name) = stream.ident(index)
@@ -223,7 +223,7 @@ fn collect_flag_assignments(
 fn collect_topic_constants(
     stream: &Stream<'_>,
     inventory: &mut RepoInventory,
-    cluster: Option<String>,
+    cluster: Option<&str>,
 ) {
     for (name, topic) in stream.bindings() {
         if !looks_like_topic(&topic) {
@@ -242,7 +242,7 @@ fn collect_topic_constants(
         } else {
             KafkaRole::Consumer
         };
-        push(inventory, role, topic, cluster.clone());
+        push(inventory, role, topic, cluster.map(str::to_owned));
     }
 }
 

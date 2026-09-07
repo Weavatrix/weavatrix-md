@@ -131,7 +131,10 @@ fn skip_path(relative: &str) -> bool {
     let path = relative.to_ascii_lowercase();
     let file_name = path.rsplit('/').next().unwrap_or(path.as_str());
     // README often documents MONGO_HOST= / SERVICE_URL= defaults with no .env.example.
-    let is_readme = matches!(file_name, "readme" | "readme.md" | "readme.rst" | "readme.txt");
+    let is_readme = matches!(
+        file_name,
+        "readme" | "readme.md" | "readme.rst" | "readme.txt"
+    );
     path.contains("/test/")
         || path.contains("/tests/")
         || path.contains("/__tests__/")

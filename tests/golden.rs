@@ -387,7 +387,7 @@ fn thr_in_thr_out_and_controller_http_host() {
         "controller-rest-api",
         &[(
             "services/messaging/kafka.js",
-            r#"
+            r"
 const { Kafka } = require('kafkajs');
 const IN_THRESHOLDS_DISCOVERY = process.env.IN_THRESHOLDS_DISCOVERY || 'thr_in';
 const IN_TOPIC_THRESHOLDS = process.env.IN_THRESHOLDS_DISCOVERY || 'thr_out';
@@ -401,7 +401,7 @@ async function start() {
 const sendThresholdDiscoveryService = async (msg, key) => {
   return await sendMessage(IN_THRESHOLDS_DISCOVERY, msg, key);
 };
-"#,
+",
         )],
     );
     repo(
@@ -467,11 +467,11 @@ fn analytics_service_url_and_shared_mongo_inventory() {
         &[
             (
                 "services/edgeAnalytics/proxy.js",
-                r#"
+                r"
 const DEFAULT_EDGE_ANALYTICS_SERVICE_URL = 'http://localhost:3310'
 export const getEdgeAnalyticsServiceUrl = () =>
   (process.env.EDGE_ANALYTICS_SERVICE_URL || DEFAULT_EDGE_ANALYTICS_SERVICE_URL).replace(/\/+$/, '')
-"#,
+",
             ),
             (
                 "README.md",

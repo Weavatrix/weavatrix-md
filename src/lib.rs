@@ -22,12 +22,12 @@ mod write;
 pub use cli::{Command, OutputMode, parse, usage};
 pub use discover::{RepoRef, Scope, folder_scope, target_scope};
 pub use error::{Error, Result};
+pub use mcp::serve as serve_mcp;
 pub use model::{
     ApiDirection, ApiObservation, ApiProtocol, ApiRelation, DatabaseEngine, DatabaseObservation,
     DatabaseRelation, KafkaObservation, KafkaRelation, KafkaRole, RepoId, RepoInventory,
     RepositoryMap,
 };
-pub use mcp::serve as serve_mcp;
 pub use render::render;
 pub use write::FILENAME;
 

@@ -342,7 +342,10 @@ fn is_env_file(relative: &str) -> bool {
     name.contains(".env")
         || name.ends_with(".properties")
         || name.ends_with(".example")
-        || matches!(name.as_str(), "readme" | "readme.md" | "readme.rst" | "readme.txt")
+        || matches!(
+            name.as_str(),
+            "readme" | "readme.md" | "readme.rst" | "readme.txt"
+        )
 }
 
 fn is_ignored_secret_env(relative: &str) -> bool {

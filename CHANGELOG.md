@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.4 — 2026-09-06
+
+- CI: satisfy clippy (`Option<&str>` for topic-constant cluster) and rustfmt.
+- Tests: drop needless raw-string hashes in golden fixtures.
+
 ## 0.2.3 — 2026-09-06
 
 - Fix panic on non-ASCII unquoted env/README values (`unquote` char boundary).
